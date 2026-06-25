@@ -1,20 +1,24 @@
 <!DOCTYPE html>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <html lang="pt-BR">
     <head>
         <meta charset="UTF-8">
         <title>ESP32 MQTT HiveMQ</title>
 
         <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
         <style>
             body{
                 background:#121212;
                 color:white;
                 font-family:Arial;
+                margin:0;
+                height:100vh;
+
                 display:flex;
                 justify-content:center;
                 align-items:center;
-                height:100vh;
             }
 
             .box{
@@ -101,11 +105,81 @@
             .slider.round:before {
                 border-radius: 50%;
             }
+            .form-control{
+                display: block;
+                width: 100%;
+                max-width: 260px;
+                height: 40px;
+                margin: 8px auto;
+                border-radius: 5px;
+                border: none;
+                padding: 0 10px;
+                background: #1e1e1e;
+                color: #fff;
+                box-sizing: border-box;
+            }
+            .box-login,
+            .box{
+                width:100%;
+                max-width:320px;
+                text-align:center;
+
+                display:flex;
+                flex-direction:column;
+                align-items:center;
+                justify-content:center;
+            }
+            .box-login {
+                gap: 8px;
+            }
+            .btn {
+                width: 100%;
+                max-width: 260px;
+                height: 44px;
+                border-radius: 8px;
+                border: none;
+                background: #2196F3;
+                color: #fff;
+                font-size: 16px;
+                cursor: pointer;
+                margin: 8px auto;
+            }
+            .password-box{
+                position: relative;
+                width: 100%;
+                max-width: 260px;
+            }
+
+            .password-box .form-control{
+                max-width: 100%;
+                padding-right: 40px;
+                box-sizing: border-box;
+            }
+
+            .toggle-password{
+                position: absolute;
+                right: 12px;
+                top: 50%;
+                transform: translateY(-50%);
+                cursor: pointer;
+                user-select: none;
+                font-size: 18px;
+            }
         </style>
     </head>
     <body>
-
-        <div class="box">
+        <div class="box-login">
+            <input id="mqtt-user" class="form-control" type="text" placeholder="Usuário MQTT">
+            <div class="password-box">
+                <input id="mqtt-pass" class="form-control" type="password" placeholder="Senha MQTT">
+                <span class="toggle-password" onclick="togglePassword()">
+                    <i id="eye-icon" class="fa-solid fa-eye"></i>
+                </span>
+            </div>
+            <button class="btn btn-primary" onclick="login()">Entrar</button>
+        </div>
+        <div id="loading" style="display:none;margin-top:10px;color:#fff;">Carregando conexão MQTT...</div>
+        <div class="box" style="display: none;">
 
             <h1>Controle refletor via ESP32</h1>
 
@@ -132,94 +206,149 @@
 
         <script>
 
+            function togglePassword(){
+                const input = document.getElementById("mqtt-pass");
+                const icon = document.getElementById("eye-icon");
+
+                if(input.type === "password"){
+                    input.type = "text";
+                    icon.className = "fa-solid fa-eye-slash";
+                }else{
+                    input.type = "password";
+                    icon.className = "fa-solid fa-eye";
+                }
+            }
+
+            let client;
+            let connectTimer;
+            let scheduleStatusReceived = false;
             const webTopic = 'web/iot-refletor-esp32-simples';
             const espTopic = 'esp32/iot-refletor-esp32-simples';
 
-            const options = {
-
-            connectTimeout: 4000,
-
-            clientId:
-                'web_' +
-                Math.random().toString(16).substr(2, 8),
-
-            clean: true
-            };
-
-            const client = mqtt.connect(
-            'wss://broker.hivemq.com:8884/mqtt',
-            options
-            );
-
-            client.on('connect', function () {
-
-                console.log('Conectado');
-
-                document.getElementById("status").innerText = "MQTT CONECTADO";
-
-                client.subscribe(webTopic);
+            ["mqtt-user", "mqtt-pass"].forEach(id => {
+                document.getElementById(id).addEventListener("keydown", function(event) {
+                    if (event.key === "Enter" || event.key === "NumpadEnter") {
+                        login();
+                    }
+                });
             });
 
-            client.on('message', function (topic, message) {
-                message = message.toString();
+            function check_inputs() {
+                const user = document.getElementById("mqtt-user").value;
+                const pass = document.getElementById("mqtt-pass").value;
 
-                if (message == "ON-SCHEDULE") {
-                    
-                    document.getElementById("schedule-input").checked = true;
-                } else if (message == "OFF-SCHEDULE") {
-                    
-                    document.getElementById("schedule-input").checked = false;
+                if (!user || !pass) {
+                    alert('Por favor, preencha usuário e senha MQTT.');
+                    return false;
                 }
-            });
+                return true;
+            }
 
-            client.on('error', function (err) {
+            function login(){
+                if (!check_inputs()) return;
 
-                console.log(err);
+                document.getElementsByClassName("box-login")[0].style.display = "none";
+                document.getElementById("loading").style.display = "block";
 
-                document.getElementById("status").innerText = "ERRO MQTT";
-            });
+                const mqtt_user = document.getElementById("mqtt-user").value;
+                const mqtt_pass = document.getElementById("mqtt-pass").value;
 
-            window.onload = () => {
+                const options = {
+                    connectTimeout: 4000,
+                    clientId: 'web_' + Math.random().toString(16).substr(2, 8),
+                    clean: true,
+                };
 
-                client.publish(
-                    espTopic,
-                    'SCHEDULE'
+                if (mqtt_user) options.username = mqtt_user;
+                if (mqtt_pass) options.password = mqtt_pass;
+
+                client = mqtt.connect(
+                    'wss://2201cadbf6a44205ab10d1d828b056f1.s1.eu.hivemq.cloud:8884/mqtt',
+                    options
                 );
-            };
 
-            schedule_checkbox = document.getElementById("schedule-input");
-            schedule_checkbox.addEventListener('change', function() {
-                if (this.checked) {
-                    client.publish(
-                        espTopic,
-                        'ON-SCHEDULE'
-                    );
-                } else {
-                    client.publish(
-                        espTopic,
-                        'OFF-SCHEDULE'
-                    );
-                }
-            });
+                connectTimer = setTimeout(() => {
+                    if (!client || !client.connected) {
+                        document.getElementById("loading").style.display = "none";
+                        document.getElementById("status").innerText = "TIMEOUT MQTT";
+                        alert('Timeout de conexão MQTT atingido. Verifique usuário, senha e conexão.');
+                        if (client) client.end(true);
+                    }
+                }, 5000);
+
+                client.on('connect', function () {
+                    clearTimeout(connectTimer);
+                    document.getElementById("loading").style.display = "none";
+                    document.getElementById("status").innerText = "MQTT CONECTADO";
+                    client.subscribe(webTopic);
+                    alert('MQTT conectado com sucesso!');
+                document.getElementsByClassName("box")[0].style.display = "flex";
+                    client.publish(espTopic, 'SCHEDULE');
+                });
+
+                client.on('message', function (topic, message) {
+                    message = message.toString();
+
+                    if (message == "ON-SCHEDULE") {
+                        document.getElementById("schedule-input").checked = true;
+
+                        if (!scheduleStatusReceived) {
+                            alert("Agendamento ativado pelo ESP32");
+                            scheduleStatusReceived = true;
+                        }
+
+                    } else if (message == "OFF-SCHEDULE") {
+                        document.getElementById("schedule-input").checked = false;
+
+                        if (!scheduleStatusReceived) {
+                            alert("Agendamento desativado pelo ESP32");
+                            scheduleStatusReceived = true;
+                        }
+                    }
+                });
+
+                client.on('error', function (err) {
+                    clearTimeout(connectTimer);
+                    document.getElementById("loading").style.display = "none";
+                    document.getElementById("status").innerText = "ERRO MQTT";
+                    const errorMessage = err && err.message ? err.message : String(err);
+                    if (errorMessage.includes("Not authorized") || errorMessage.includes("Connection refused")) {
+                        alert('Verifique usuário e senha MQTT.');
+                        document.getElementsByClassName("box-login")[0].style.display = "flex";
+                        document.getElementById("loading").style.display = "none";
+                        document.getElementsByClassName("box")[0].style.display = "none";
+
+                        return;
+                    }
+                    alert('Erro MQTT: ' + errorMessage);
+                });
+
+                const schedule_checkbox = document.getElementById("schedule-input");
+                schedule_checkbox.addEventListener('change', function() {
+                    if (!client) return;
+                    if (this.checked) {
+                        client.publish(espTopic, 'ON-SCHEDULE');
+                        console.log('Enviado: ON-SCHEDULE');
+                    } else {
+                        client.publish(espTopic, 'OFF-SCHEDULE');
+                        console.log('Enviado: OFF-SCHEDULE');
+                    }
+                });
+            }
 
             function ligar(){
-
-                client.publish(
-                    espTopic,
-                    'ON'
-                );
-
-                console.log("ON enviado");
+                if (!client) return alert('MQTT não conectado');
+                client.publish(espTopic, 'ON');
+                console.log('Comando enviado: ON');
             }
 
             function desligar(){
-
+                if (!client) return alert('MQTT não conectado');
                 client.publish(
                     espTopic,
                     'OFF'
                 );
-
-                console.log("OFF enviado");
+                console.log('Comando enviado: OFF');
             }
 
         </script>
